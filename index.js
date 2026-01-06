@@ -5,6 +5,9 @@ const path = require("path");
 const app = express();
 const PORT = 8000;
 
+// 静的ファイル（index.htmlなど）を同階層から配信
+app.use(express.static(__dirname));
+
 const TOKEN_FILE = path.join(__dirname, "access_token.json");
 const CREDENTIALS_FILE = path.join(__dirname, "credentials.json");
 
@@ -22,8 +25,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// PHPの index.php を叩く前提に合わせる：/index.php をAPIとして扱う
-app.get("/index.php", async (req, res) => {
+// /api をAPIとして扱う
+app.get("/api", async (req, res) => {
   const searchCode = req.query.search_code ?? "";
 
   // token読み込み
@@ -89,9 +92,6 @@ app.get("/index.php", async (req, res) => {
     res.status(500).json({ error: "internal_error", message: String(e) });
   }
 });
-
-// 静的ファイル（index.htmlなど）を同階層から配信
-app.use(express.static(__dirname));
 
 // ルートに来たら index.html を返す（静的でも返りますが明示）
 app.get("/", (req, res) => {
