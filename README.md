@@ -113,16 +113,16 @@ curl "http://127.0.0.1:8000/api?search_code=1000001"
 ### 5. ローカル実行 (Ruby 版)
 
 ```bash
-./ruby/server.ruby.sh             # 初回は自動で bundle install を実行
-PORT=9000 ./ruby/server.ruby.sh   # 環境変数または引数でポート上書き
+./ruby/server.ruby.sh             # デフォルトで http://127.0.0.1:8002 へアクセスできます
+PORT=9002 ./ruby/server.ruby.sh   # ポート番号を変えたい場合
 
 # 直接起動（Bundler を手動で実行する場合）
 cd ruby
 bundle install --path vendor/bundle
-HOST=127.0.0.1 PORT=8000 bundle exec ruby index.rb
+HOST=127.0.0.1 PORT=8002 bundle exec ruby index.rb
 
 # 動作確認例
-curl "http://127.0.0.1:8000/api?search_code=1000001"
+curl "http://127.0.0.1:8002/api?search_code=1000001"
 ```
 
 - `server.ruby.sh` は `bundle install` 実行後に `bundle exec ruby index.rb` を起動します。依存ライブラリは `ruby/vendor/` にインストールされ、`.gitignore` で除外しています。
@@ -130,8 +130,8 @@ curl "http://127.0.0.1:8000/api?search_code=1000001"
 ### 6. ローカル実行 (Python 版)
 
 ```bash
-./python/server.python.sh         # 仮想環境と依存関係を自動セットアップ
-PORT=9000 ./python/server.python.sh   # 環境変数または引数でポート上書き
+./python/server.python.sh         # デフォルトで http://127.0.0.1:8003 へアクセスできます
+PORT=9003 ./python/server.python.sh   # ポート番号を変えたい場合
 
 # 直接起動（手動で仮想環境を作成する場合）
 cd python
@@ -139,10 +139,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
-HOST=127.0.0.1 PORT=8000 python index.py
+HOST=127.0.0.1 PORT=8003 python index.py
 
 # 動作確認例
-curl "http://127.0.0.1:8000/api?search_code=1000001"
+curl "http://127.0.0.1:8003/api?search_code=1000001"
 ```
 
 - `server.python.sh` はローカルに `.venv/` を作成して `Flask` / `requests` をインストールします。`.venv/` は `.gitignore` / `.dockerignore` 済みです。

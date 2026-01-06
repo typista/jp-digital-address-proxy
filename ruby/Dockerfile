@@ -7,7 +7,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY ruby/Gemfile ruby/Gemfile.lock /app/
-RUN bundle config set path '/app/vendor/bundle' && bundle install
+RUN gem install bundler -v 2.5.10 && \
+    bundle _2.5.10_ config set --local path '/app/vendor/bundle' && \
+    bundle _2.5.10_ install
 
 COPY shared /app/shared
 COPY ruby /app/ruby

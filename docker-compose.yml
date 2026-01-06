@@ -34,6 +34,10 @@ services:
     volumes:
       - ./ruby:/app/ruby
       - ./shared:/app/shared
+    environment:
+      HOST: 0.0.0.0
+      BIND_HOST: 0.0.0.0
+      PORT: 8002
 
   python:
     build:
@@ -45,3 +49,7 @@ services:
     volumes:
       - ./python:/app/python
       - ./shared:/app/shared
+    environment:
+      HOST: 0.0.0.0
+      BIND_HOST: 0.0.0.0
+      PORT: 8003
