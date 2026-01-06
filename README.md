@@ -1,6 +1,12 @@
 # 郵便番号・デジタルアドレス API プロキシ
 
-Japan Post Digital Address API に対する簡易プロキシサーバーです。  
+Japan Post Digital Address API（郵便番号・デジタルアドレス for Biz）に対する簡易プロキシサーバーです。  
+利用には日本郵便が提供するビジネス向けポータルへの登録が必要で、次の準備を済ませてから本プロキシを動かしてください [^jp-api].
+
+1. ゆうIDを取得し、郵便番号・デジタルアドレス for Biz にログインする。
+2. 開発したいシステムをダッシュボードの「システムリスト」に登録する。このリポジトリをローカルで動かす場合は `127.0.0.1` を接続元 IP として登録しておく。
+3. API用のクライアント資格情報（`client_id` と `secret_key`）を取得する。
+
 PHP と Node.js の 2 つの実装を同梱し、どちらも次のような役割を担います。
 
 - `/api` への GET リクエストを受け取り、アクセストークンをキャッシュしながら Japan Post API に代理アクセスする
@@ -95,3 +101,5 @@ curl "http://127.0.0.1:8000/api?search_code=1000001"
 ## ライセンス
 
 MIT License
+
+[^jp-api]: 「郵便番号・デジタルアドレス for Biz」公式サイト https://guide-biz.da.pf.japanpost.jp/api/
