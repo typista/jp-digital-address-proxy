@@ -1,0 +1,7 @@
+node/node_modules
+node/npm-debug.log
+shared/runtime/
+shared/config/credentials.json
+.git
+.gitmodules
+.gitignore

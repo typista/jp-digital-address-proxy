@@ -100,6 +100,23 @@ curl "http://127.0.0.1:8000/api?search_code=1000001"
 - `node/index.js` の `PORT` は既定で 8000、`shared/frontend` を静的配信します。
 - トークンキャッシュは PHP 版と同じファイル (`shared/runtime/access_token.json`) を利用します。
 
+## Docker での開発
+
+Docker と Docker Compose v2 が利用可能な環境では、コンテナ経由で PHP / Node.js の両方を起動できます。事前に `shared/config/credentials.json` を用意してから以下を実行してください。
+
+```bash
+# PHP + Node を同時に起動
+docker compose up
+
+# どちらか片方のみ起動
+docker compose up node
+docker compose up php
+```
+
+- Node サービスは `http://127.0.0.1:8000/`、PHP サービスは `http://127.0.0.1:8001/` でアクセスできます。
+- 共有リソース（`shared/frontend` や `shared/config` など）はボリュームとしてマウントされるため、ホスト側の変更が即座に反映されます。
+- 初回起動時は Node コンテナ内で `npm install` が走るため、準備完了まで少し時間がかかる場合があります。
+
 ## API 挙動
 
 1. `/api` に `search_code` をクエリで指定して GET を送信します。

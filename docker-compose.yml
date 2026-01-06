@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  node:
+    build:
+      context: .
+      dockerfile: node/Dockerfile
+    command: sh -c "npm install --prefix /app/node && npm start --prefix /app/node"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./node:/app/node
+      - ./shared:/app/shared
+    environment:
+      - NODE_ENV=development
+
+  php:
+    build:
+      context: .
+      dockerfile: php/Dockerfile
+    command: php -S 0.0.0.0:8000 -t /app/php index.php
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./php:/app/php
+      - ./shared:/app/shared
