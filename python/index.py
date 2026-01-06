@@ -64,7 +64,7 @@ def apiRoute(fallback: str) -> Response:
 
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
-def indexRoute(_path: str) -> Response:
+def indexRoute(path: str) -> Response:  # type: ignore[unused-argument]
     return serveIndexHtml()
 
 
