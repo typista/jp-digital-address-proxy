@@ -2,14 +2,21 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 
+const ROOT_DIR = path.join(__dirname, "..");
+const SHARED_DIR = path.join(ROOT_DIR, "shared");
+const FRONTEND_DIR = path.join(SHARED_DIR, "frontend");
+const FRONTEND_HTML = path.join(FRONTEND_DIR, "index.html");
+const RUNTIME_DIR = path.join(SHARED_DIR, "runtime");
+const CONFIG_DIR = path.join(SHARED_DIR, "config");
+
+const TOKEN_FILE = path.join(RUNTIME_DIR, "access_token.json");
+const CREDENTIALS_FILE = path.join(CONFIG_DIR, "credentials.json");
+
 const app = express();
 const PORT = 8000;
 
-// 静的ファイル（index.htmlなど）を同階層から配信
-app.use(express.static(__dirname));
-
-const TOKEN_FILE = path.join(__dirname, "access_token.json");
-const CREDENTIALS_FILE = path.join(__dirname, "credentials.json");
+// 静的ファイル（shared/frontend）を配信
+app.use(express.static(FRONTEND_DIR));
 
 // CORS（必要なら。index.htmlと同一オリジンなら本来不要ですが、残してもOK）
 app.use((req, res, next) => {
@@ -43,6 +50,11 @@ app.get("/api", async (req, res) => {
 
   // tokenなければ取得
   if (!token) {
+    if (!fs.existsSync(CREDENTIALS_FILE)) {
+      res.status(500).json({ error: "credentials.json not found" });
+      return;
+    }
+
     const credentials = fs.readFileSync(CREDENTIALS_FILE, "utf8");
     const tResp = await fetch("https://api.da.pf.japanpost.jp/api/v1/j/token", {
       method: "POST",
@@ -59,6 +71,7 @@ app.get("/api", async (req, res) => {
       return;
     }
 
+    fs.mkdirSync(RUNTIME_DIR, { recursive: true });
     fs.writeFileSync(TOKEN_FILE, tText, "utf8");
     token = JSON.parse(tText).token;
   }
@@ -93,13 +106,13 @@ app.get("/api", async (req, res) => {
   }
 });
 
-// ルートに来たら index.html を返す（静的でも返りますが明示）
+// ルートに来たら index.html を返す
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
+  res.sendFile(FRONTEND_HTML);
 });
 
 app.listen(PORT, () => {
   console.log(`HTML: http://127.0.0.1:${PORT}/index.html`);
-  console.log(`API : http://127.0.0.1:${PORT}/index.php?search_code=1020082`);
+  console.log(`API : http://127.0.0.1:${PORT}/api?search_code=1020082`);
 });
 

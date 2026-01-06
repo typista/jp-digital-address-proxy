@@ -1,15 +1,23 @@
 <?php
 /**
- * index.php
+ * php/index.php
  *
  * - /api で呼ばれたとき：Japan Post Digital Address API のプロキシ（JSON返却）
- * - それ以外：index.html を返す（画面表示）
+ * - それ以外：shared/frontend/index.html を返す（画面表示）
  *
- * 同階層に以下がある前提：
- * - index.html
- * - credentials.json
- * - access_token.json（自動生成）
+ * 前提となるファイル／ディレクトリ：
+ * - shared/frontend/index.html
+ * - shared/config/credentials.json（ユーザーが配置）
+ * - shared/runtime/access_token.json（自動生成）
  */
+
+define('BASE_DIR', dirname(__DIR__));
+define('SHARED_DIR', BASE_DIR . '/shared');
+define('FRONTEND_HTML', SHARED_DIR . '/frontend/index.html');
+define('CONFIG_DIR', SHARED_DIR . '/config');
+define('RUNTIME_DIR', SHARED_DIR . '/runtime');
+define('TOKEN_FILE', RUNTIME_DIR . '/access_token.json');
+define('CREDENTIALS_FILE', CONFIG_DIR . '/credentials.json');
 
 /* ========= ルーティング（/api 判定） ========= */
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -29,14 +37,13 @@ function serve_index_html(): void
 {
     header('Content-Type: text/html; charset=utf-8');
 
-    $html = __DIR__ . '/index.html';
-    if (file_exists($html)) {
-        readfile($html);
+    if (file_exists(FRONTEND_HTML)) {
+        readfile(FRONTEND_HTML);
         return;
     }
 
     http_response_code(404);
-    echo "index.html not found";
+    echo "shared/frontend/index.html not found";
 }
 
 
@@ -83,10 +90,8 @@ function get_search_code(): string
 /* ========= アクセストークン取得 ========= */
 function get_access_token_or_fetch(): string
 {
-    $token_filename = __DIR__ . '/access_token.json';
-
     // キャッシュがあれば利用
-    $cached = load_cached_token($token_filename);
+    $cached = load_cached_token(TOKEN_FILE);
     if ($cached !== null) {
         return $cached;
     }
@@ -100,8 +105,13 @@ function get_access_token_or_fetch(): string
         exit;
     }
 
+    // runtime ディレクトリが無い場合は作成
+    if (!is_dir(RUNTIME_DIR)) {
+        mkdir(RUNTIME_DIR, 0775, true);
+    }
+
     // 保存して返す
-    file_put_contents($token_filename, $result['body']);
+    file_put_contents(TOKEN_FILE, $result['body']);
     $obj = json_decode($result['body']);
     return $obj->token;
 }
@@ -137,8 +147,7 @@ function load_cached_token(string $token_filename): ?string
 /* ========= 新規トークン取得 ========= */
 function fetch_new_token(): array
 {
-    $credentials_file = __DIR__ . '/credentials.json';
-    if (!file_exists($credentials_file)) {
+    if (!file_exists(CREDENTIALS_FILE)) {
         return [
             'status' => 500,
             'body'   => json_encode(['error' => 'credentials.json not found'], JSON_UNESCAPED_UNICODE),
@@ -151,7 +160,7 @@ function fetch_new_token(): array
         'Content-Type: application/json',
         'x-forwarded-for: 127.0.0.1',
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents($credentials_file));
+    curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents(CREDENTIALS_FILE));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
     $body = curl_exec($ch);
