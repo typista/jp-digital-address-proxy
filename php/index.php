@@ -32,8 +32,7 @@ exit;
 
 
 /* ========= 画面返却 ========= */
-function serveIndexHtml(): void
-{
+function serveIndexHtml(): void {
     header('Content-Type: text/html; charset=utf-8');
 
     if (file_exists(FRONTEND_HTML)) {
@@ -47,8 +46,7 @@ function serveIndexHtml(): void
 
 
 /* ========= API処理 ========= */
-function handleApiRequest(): void
-{
+function handleApiRequest(): void {
     // CORS（API用）
     header('Access-Control-Allow-Origin: *');
     header('Access-Control-Allow-Methods: *');
@@ -78,8 +76,7 @@ function handleApiRequest(): void
 
 
 /* ========= search_code 取得 ========= */
-function getSearchCode(): string
-{
+function getSearchCode(): string {
     // クエリ優先
     if (isset($_GET['search_code'])) {
         return (string)$_GET['search_code'];
@@ -97,8 +94,7 @@ function getSearchCode(): string
 
 
 /* ========= アクセストークン取得 ========= */
-function getAccessTokenOrFetch(): array
-{
+function getAccessTokenOrFetch(): array {
     // キャッシュがあれば利用
     $cached = loadCachedToken(TOKEN_FILE);
     if ($cached !== null) {
@@ -139,8 +135,7 @@ function getAccessTokenOrFetch(): array
 
 
 /* ========= トークンキャッシュ読み込み ========= */
-function loadCachedToken(string $token_filename): ?string
-{
+function loadCachedToken(string $token_filename): ?string {
     if (!file_exists($token_filename)) {
         return null;
     }
@@ -166,8 +161,7 @@ function loadCachedToken(string $token_filename): ?string
 
 
 /* ========= 新規トークン取得 ========= */
-function fetchNewToken(): array
-{
+function fetchNewToken(): array {
     if (!file_exists(CREDENTIALS_FILE)) {
         return [
             'ok'     => false,
@@ -198,8 +192,7 @@ function fetchNewToken(): array
 
 
 /* ========= JapanPost APIへプロキシ ========= */
-function proxyJapanPostApi(string $token, string $search_code): void
-{
+function proxyJapanPostApi(string $token, string $search_code): void {
     header('Content-Type: application/json');
 
     if (isZipOrCode($search_code)) {
@@ -240,16 +233,14 @@ function proxyJapanPostApi(string $token, string $search_code): void
 
 
 /* ========= search_code 種別判定 ========= */
-function isZipOrCode(string $search_code): bool
-{
+function isZipOrCode(string $search_code): bool {
     return preg_match('/^\d{3,7}$/', $search_code) === 1
         || preg_match('/^\w{7}$/', $search_code) === 1;
 }
 
 
 /* ========= 補助 ========= */
-function ensureRuntimeDir(): void
-{
+function ensureRuntimeDir(): void {
     if (!is_dir(RUNTIME_DIR)) {
         mkdir(RUNTIME_DIR, 0775, true);
     }

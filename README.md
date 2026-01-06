@@ -98,6 +98,7 @@ curl "http://127.0.0.1:8000/api?search_code=1000001"
 - 旧構成で生成されていたリポジトリ直下の `node_modules/` や `package-lock.json` は不要になったため削除し、`node/` 配下で再生成してください。
 - `node/index.js` は `PORT`（既定 8000）と `HOST` を環境変数で受け取り、`shared/frontend` を静的配信します。
 - トークンキャッシュは PHP 版と同じファイル (`shared/runtime/access_token.json`) を利用します。
+- PHP ファイルは `.php-cs-fixer.php` のルールに従って整形できます。関数の波括弧は同じ行に配置する方針です。
 
 ## Docker での開発
 
