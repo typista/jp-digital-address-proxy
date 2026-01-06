@@ -6,5 +6,10 @@ shared/runtime/access_token.json
 node/node_modules/
 node_modules/
 
+# Ruby / Python environment directories
+ruby/vendor/
+python/.venv/
+__pycache__/
+
 # Misc
 *.log

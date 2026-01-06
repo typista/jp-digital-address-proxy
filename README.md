@@ -7,7 +7,7 @@ Japan Post Digital Address API（郵便番号・デジタルアドレス for Biz
 2. 開発したいシステムをダッシュボードの「システムリスト」に登録する。このリポジトリをローカルで動かす場合は `127.0.0.1` を接続元 IP として登録しておく。
 3. API用のクライアント資格情報（`client_id` と `secret_key`）を取得する。
 
-PHP と Node.js の 2 つの実装を同梱し、どちらも次のような役割を担います。
+PHP / Node.js / Ruby / Python の 4 つの実装を同梱し、いずれも次のような役割を担います。
 
 - `/api` への GET リクエストを受け取り、アクセストークンをキャッシュしながら Japan Post API に代理アクセスする
 - それ以外のパスにはフロントエンドの `index.html` を返却する
@@ -23,13 +23,19 @@ jp-digital-address-proxy/
 │   └── runtime/               # 実行時生成ファイル（アクセストークン等）
 ├── php/                       # PHP 実装
 │   ├── index.php
-│   └── server.php.sh
+│   └── server.php.sh          # PHP 内蔵サーバー起動用スクリプト
 ├── node/                      # Node.js 実装
 │   ├── index.js
 │   ├── package.json
-│   └── server.nodejs.sh
-├── ruby/                      # Ruby 実装用プレースホルダー
-└── python/                    # Python 実装用プレースホルダー
+│   └── server.nodejs.sh       # npm start ラッパースクリプト
+├── ruby/                      # Ruby (Sinatra) 実装と起動スクリプト
+│   ├── index.rb
+│   ├── Gemfile
+│   └── server.ruby.sh
+└── python/                    # Python (Flask) 実装と起動スクリプト
+    ├── index.py
+    ├── requirements.txt
+    └── server.python.sh
 ```
 
 ## 主なファイル
@@ -37,14 +43,18 @@ jp-digital-address-proxy/
 - `shared/frontend/index.html` – 郵便番号から住所を取得するフォーム。`/api?search_code=XXXXXXX` に fetch し、取得結果をフォームに反映する。
 - `php/index.php` – PHP 版のプロキシ。cURL でトークン取得 (`/api/v1/j/token`) と住所検索 (`/api/v1/searchcode` or `/api/v1/addresszip`) を呼び出す。
 - `node/index.js` – Node.js 版のプロキシ。Express を使用して PHP 版と同等の挙動を提供する。
+- `ruby/index.rb` – Ruby (Sinatra) 版のプロキシ。Rack/Sinatra 上で PHP/Node と揃えたルーティングを提供する。
+- `python/index.py` – Python (Flask) 版のプロキシ。requests を用いて API コールとトークンキャッシュを行う。
 - `shared/config/credentials.json` – API クライアント資格情報（ユーザーが配置する）。
 - `shared/runtime/access_token.json` – 取得したアクセストークンをキャッシュするためのファイル。初回リクエスト時や期限切れ時に自動で更新される。
-- `php/server.php.sh` / `node/server.nodejs.sh` – ローカル開発用の起動スクリプト。
+- `php/server.php.sh` / `node/server.nodejs.sh` / `ruby/server.ruby.sh` / `python/server.python.sh` – 各言語版のローカル開発用起動スクリプト。
 
 ## 必要要件
 
 - PHP 8.1 以降 (PHP 版を使用する場合)
 - Node.js 18 以降 (Node.js 版を使用する場合)
+- Ruby 3.1 以降 (Ruby 版を使用する場合)
+- Python 3.10 以降 (Python 版を使用する場合)
 - Japan Post Digital Address API のクライアント資格情報
 
 ## セットアップ
@@ -99,6 +109,45 @@ curl "http://127.0.0.1:8000/api?search_code=1000001"
 - `node/index.js` は `PORT`（既定 8000）と `HOST` を環境変数で受け取り、`shared/frontend` を静的配信します。
 - トークンキャッシュは PHP 版と同じファイル (`shared/runtime/access_token.json`) を利用します。
 - PHP ファイルは `.php-cs-fixer.php` のルールに従って整形できます。関数の波括弧は同じ行に配置する方針です。
+
+### 5. ローカル実行 (Ruby 版)
+
+```bash
+./ruby/server.ruby.sh             # 初回は自動で bundle install を実行
+PORT=9000 ./ruby/server.ruby.sh   # 環境変数または引数でポート上書き
+
+# 直接起動（Bundler を手動で実行する場合）
+cd ruby
+bundle install --path vendor/bundle
+HOST=127.0.0.1 PORT=8000 bundle exec ruby index.rb
+
+# 動作確認例
+curl "http://127.0.0.1:8000/api?search_code=1000001"
+```
+
+- `server.ruby.sh` は `bundle install` 実行後に `bundle exec ruby index.rb` を起動します。依存ライブラリは `ruby/vendor/` にインストールされ、`.gitignore` で除外しています。
+- `index.rb` は Sinatra を利用し、PHP/Node 版と同じルーティング・トークンキャッシュの挙動を提供します。
+
+### 6. ローカル実行 (Python 版)
+
+```bash
+./python/server.python.sh         # 仮想環境と依存関係を自動セットアップ
+PORT=9000 ./python/server.python.sh   # 環境変数または引数でポート上書き
+
+# 直接起動（手動で仮想環境を作成する場合）
+cd python
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+HOST=127.0.0.1 PORT=8000 python index.py
+
+# 動作確認例
+curl "http://127.0.0.1:8000/api?search_code=1000001"
+```
+
+- `server.python.sh` はローカルに `.venv/` を作成して `Flask` / `requests` をインストールします。`.venv/` は `.gitignore` / `.dockerignore` 済みです。
+- `index.py` は Flask で `/api` を提供し、各言語版と同じトークン管理・ルーティングを実装しています。
 
 ## Docker での開発
 
