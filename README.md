@@ -116,6 +116,7 @@ docker compose up php
 - Node サービスは `http://127.0.0.1:8000/`、PHP サービスは `http://127.0.0.1:8001/` でアクセスできます。
 - 共有リソース（`shared/frontend` や `shared/config` など）はボリュームとしてマウントされるため、ホスト側の変更が即座に反映されます。
 - 初回起動時は Node コンテナ内で `npm install` が走るため、準備完了まで少し時間がかかる場合があります。
+- PHP サービスは `PHP_PORT=8000 docker compose up php` のように `PHP_PORT` を指定するとホスト側ポートを上書きできます。コンテナログには実際にアクセス可能な URL が案内されます。
 
 ## API 挙動
 

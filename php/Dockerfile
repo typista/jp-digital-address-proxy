@@ -10,6 +10,8 @@ WORKDIR /app
 COPY shared ./shared
 COPY php ./php
 
+RUN chmod +x /app/php/docker-entrypoint.sh
+
 EXPOSE 8000
 
-CMD ["php", "-S", "0.0.0.0:8000", "-t", "/app/php", "/app/php/index.php"]
+CMD ["/app/php/docker-entrypoint.sh"]
