@@ -48,7 +48,7 @@ start_server() {
   mkfifo "$LOG_PIPE"
 
   BIND_HOST="$BIND_HOST" PUBLIC_HOST="$PUBLIC_HOST" PUBLIC_PORT="$PUBLIC_PORT" PORT="$PORT" \
-    php -S "${BIND_HOST}:${PORT}" -t "$SCRIPT_DIR" "$SCRIPT_DIR/index.php" >"$LOG_PIPE" 2>&1 &
+    php -d output_buffering=0 -d implicit_flush=1 -S "${BIND_HOST}:${PORT}" -t "$SCRIPT_DIR" "$SCRIPT_DIR/index.php" >"$LOG_PIPE" 2>&1 &
   SERVER_PID=$!
 
   sed -u '/ Accepted$/d; / Closing$/d' <"$LOG_PIPE" &

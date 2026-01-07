@@ -21,6 +21,11 @@ define('CREDENTIALS_FILE', CONFIG_DIR . '/credentials.json');
 
 /* ========= ルーティング ========= */
 function logRequest(int $status): void {
+    static $stdout = null;
+    if ($stdout === null) {
+        $stdout = fopen('php://stdout', 'w');
+    }
+
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     $uri = $_SERVER['REQUEST_URI'] ?? '/';
     if ($uri === '') {
@@ -39,7 +44,10 @@ function logRequest(int $status): void {
     if ($port !== '' && strpos($host, ':') === false) {
         $base .= ':' . $port;
     }
-    file_put_contents('php://stdout', sprintf('[php-proxy] %s %s%s -> %d\n', $method, $base, $uri, $status));
+    if ($stdout !== null) {
+        fwrite($stdout, sprintf('[php-proxy] %s %s%s -> %d\n', $method, $base, $uri, $status));
+        fflush($stdout);
+    }
 }
 
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);

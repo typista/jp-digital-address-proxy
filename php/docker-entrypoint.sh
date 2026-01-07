@@ -27,7 +27,7 @@ cleanup_pipe() {
 }
 trap cleanup_pipe EXIT
 
-php -S "${BIND_HOST}:${PORT}" -t /app/php /app/php/index.php >"$LOG_PIPE" 2>&1 &
+php -d output_buffering=0 -d implicit_flush=1 -S "${BIND_HOST}:${PORT}" -t /app/php /app/php/index.php >"$LOG_PIPE" 2>&1 &
 PHP_PID=$!
 
 sed -u '/ Accepted$/d; / Closing$/d' <"$LOG_PIPE" &
