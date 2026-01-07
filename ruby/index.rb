@@ -7,6 +7,8 @@ require "cgi"
 require "webrick"
 require "logger"
 
+$stdout.sync = true
+
 # =========================
 #  ruby/index.rb
 # -------------------------

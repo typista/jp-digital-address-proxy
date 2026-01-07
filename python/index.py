@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Dict, Optional
@@ -39,6 +40,12 @@ LISTEN_URL = f"http://{BIND_HOST}:{PORT}"
 ACCESS_URL = f"http://{PUBLIC_HOST}:{PUBLIC_PORT}"
 
 app = Flask(__name__)
+
+# Ensure application logs flush immediately when running under docker compose
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+else:
+    sys.stdout = os.fdopen(sys.stdout.fileno(), "w", buffering=1)
 
 werkzeug_logger = logging.getLogger("werkzeug")
 werkzeug_logger.setLevel(logging.WARNING)
