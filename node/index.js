@@ -38,18 +38,23 @@ const app = express();
 app.use(express.static(FRONTEND_DIR));
 
 app.use((req, res, next) => {
-    const path = req.originalUrl || req.url || "/";
-    res.on("finish", () => {
-        console.log(`[node-proxy] ${req.method} ${path} -> ${res.statusCode}`);
-    });
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "*");
-    res.setHeader("Access-Control-Allow-Headers", "*");
-    if (req.method !== "GET") {
-        res.status(204).end();
-        return;
-    }
-    next();
+  const pathWithQuery = req.originalUrl || req.url || "/";
+  res.on("finish", () => {
+    const normalized = pathWithQuery.startsWith("/")
+      ? pathWithQuery
+      : `/${pathWithQuery}`;
+    console.log(
+      `[node-proxy] ${req.method} ${ACCESS_URL}${normalized} -> ${res.statusCode}`,
+    );
+  });
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "*");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  if (req.method !== "GET") {
+    res.status(204).end();
+    return;
+  }
+  next();
 });
 
 /* ========= ルーティング ========= */
@@ -62,7 +67,7 @@ app.listen(PORT, BIND_HOST, () => {
   console.log(`[node-proxy] Listening inside container on ${LISTEN_URL}`);
   console.log(`[node-proxy] Access from host via ${ACCESS_URL}/`);
   console.log(
-    `[node-proxy] Quick check: ${ACCESS_URL}/api?search_code=1020082`,
+    `[node-proxy] Quick check: ${ACCESS_URL}/api?search_code=1000001`,
   );
 });
 

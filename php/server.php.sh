@@ -42,7 +42,8 @@ prepare_environment() {
 }
 
 start_server() {
-  php -S "${BIND_HOST}:${PORT}" -t "$SCRIPT_DIR" "$SCRIPT_DIR/index.php" &
+  BIND_HOST="$BIND_HOST" PUBLIC_HOST="$PUBLIC_HOST" PUBLIC_PORT="$PUBLIC_PORT" PORT="$PORT" \
+    php -S "${BIND_HOST}:${PORT}" -t "$SCRIPT_DIR" "$SCRIPT_DIR/index.php" &
   SERVER_PID=$!
 }
 

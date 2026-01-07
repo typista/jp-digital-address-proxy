@@ -46,7 +46,7 @@ start_server() {
   local previous_dir
   previous_dir=$(pwd)
   cd "$SCRIPT_DIR"
-  HOST="$BIND_HOST" PORT="$PORT" PUBLIC_HOST="$PUBLIC_HOST" PUBLIC_PORT="$PUBLIC_PORT" npm start &
+  BIND_HOST="$BIND_HOST" HOST="$BIND_HOST" PORT="$PORT" PUBLIC_HOST="$PUBLIC_HOST" PUBLIC_PORT="$PUBLIC_PORT" npm start &
   SERVER_PID=$!
   cd "$previous_dir"
 }

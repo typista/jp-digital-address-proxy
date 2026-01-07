@@ -49,7 +49,7 @@ prepare_environment() {
 
 start_server() {
   source "$VENV_DIR/bin/activate"
-  HOST="$BIND_HOST" PORT="$PORT" PUBLIC_HOST="$PUBLIC_HOST" PUBLIC_PORT="$PUBLIC_PORT" python "$SCRIPT_DIR/index.py" &
+  BIND_HOST="$BIND_HOST" HOST="$BIND_HOST" PORT="$PORT" PUBLIC_HOST="$PUBLIC_HOST" PUBLIC_PORT="$PUBLIC_PORT" python "$SCRIPT_DIR/index.py" &
   SERVER_PID=$!
   deactivate
 }

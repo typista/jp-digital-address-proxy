@@ -20,6 +20,28 @@ define('TOKEN_FILE', RUNTIME_DIR . '/access_token.json');
 define('CREDENTIALS_FILE', CONFIG_DIR . '/credentials.json');
 
 /* ========= ルーティング ========= */
+function logRequest(int $status): void {
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    $uri = $_SERVER['REQUEST_URI'] ?? '/';
+    if ($uri === '') {
+        $uri = '/';
+    }
+    $host = getenv('PUBLIC_HOST');
+    if ($host === false || $host === '') {
+        $host = $_SERVER['HTTP_HOST'] ?? '127.0.0.1';
+    }
+    $port = getenv('PUBLIC_PORT');
+    if ($port === false || $port === '') {
+        $port = $_SERVER['SERVER_PORT'] ?? '';
+    }
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $base = $scheme . '://' . $host;
+    if ($port !== '' && strpos($host, ':') === false) {
+        $base .= ':' . $port;
+    }
+    file_put_contents('php://stdout', sprintf('[php-proxy] %s %s%s -> %d\n', $method, $base, $uri, $status));
+}
+
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 if ($path === '/api' || str_starts_with($path ?? '', '/api/')) {
@@ -36,12 +58,15 @@ function serveIndexHtml(): void {
     header('Content-Type: text/html; charset=utf-8');
 
     if (file_exists(FRONTEND_HTML)) {
+        http_response_code(200);
         readfile(FRONTEND_HTML);
+        logRequest(http_response_code());
         return;
     }
 
     http_response_code(404);
-    echo "shared/frontend/index.html not found";
+    echo 'shared/frontend/index.html not found';
+    logRequest(404);
 }
 
 
@@ -55,7 +80,8 @@ function handleApiRequest(): void {
     // GET以外は 204（元処理と同等）
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
         http_response_code(204);
-        exit;
+        logRequest(204);
+        return;
     }
 
     // search_code の取得（元処理を踏襲）
@@ -63,14 +89,16 @@ function handleApiRequest(): void {
 
     // Token確保（キャッシュ→なければ取得）
     $token_result = getAccessTokenOrFetch();
-    if ($token_result['ok'] === false) {
-        http_response_code($token_result['status']);
+    if (!($token_result['ok'] ?? false)) {
+        $status = (int) ($token_result['status'] ?? 500);
+        http_response_code($status);
         header('Content-Type: application/json');
-        echo $token_result['body'];
-        exit;
+        echo $token_result['body'] ?? '';
+        logRequest($status);
+        return;
     }
 
-    // Japan Post APIへリクエストして、そのまま返却
+    // Japan Post APIへプロキシして、そのまま返却
     proxyJapanPostApi($token_result['token'], $search_code);
 }
 
@@ -208,8 +236,10 @@ function proxyJapanPostApi(string $token, string $search_code): void {
         $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         curl_close($ch);
 
-        http_response_code((int)$code);
-        echo $body;
+        $status = (int)$code;
+        http_response_code($status);
+        echo $body === false ? '' : $body;
+        logRequest($status);
         return;
     }
 
@@ -227,8 +257,10 @@ function proxyJapanPostApi(string $token, string $search_code): void {
     $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     curl_close($ch);
 
-    http_response_code((int)$code);
-    echo $body;
+    $status = (int)$code;
+    http_response_code($status);
+    echo $body === false ? '' : $body;
+    logRequest($status);
 }
 
 
