@@ -39,7 +39,7 @@ function logRequest(int $status): void {
     if ($port !== '' && strpos($host, ':') === false) {
         $base .= ':' . $port;
     }
-    error_log(sprintf('[php-proxy] %s %s%s -> %d', $method, $base, $uri, $status));
+    file_put_contents('php://stderr', sprintf('[php-proxy] %s %s%s -> %d' . PHP_EOL, $method, $base, $uri, $status));
 }
 
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
