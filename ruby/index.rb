@@ -115,13 +115,54 @@ helpers do
   def handleApiRequest(fallback)
     search_code = getSearchCode(fallback)
 
-    token_result = getAccessTokenOrFetch
+    creds_result = loadCredentials
+    unless creds_result[:ok]
+      content_type :json
+      halt creds_result[:status], creds_result[:body]
+    end
+    credentials = creds_result[:data]
+    hostname = credentials["hostname"]
+
+    token_result = getAccessTokenOrFetch(credentials)
     unless token_result[:ok]
       content_type :json
       halt token_result[:status], token_result[:body]
     end
 
-    proxyJapanPostApi(token_result[:token], search_code)
+    proxyJapanPostApi(token_result[:token], hostname, search_code)
+  end
+
+  # ========= 資格情報ファイル読み込み =========
+
+  def loadCredentials
+    unless File.exist?(CREDENTIALS_FILE)
+      return {
+        ok: false,
+        status: 500,
+        body: { error: "credentials.json not found" }.to_json
+      }
+    end
+
+    begin
+      data = JSON.parse(File.read(CREDENTIALS_FILE))
+    rescue StandardError
+      return {
+        ok: false,
+        status: 500,
+        body: { error: "invalid_credentials", message: "credentials.json is not valid JSON" }.to_json
+      }
+    end
+
+    hostname = data["hostname"]
+    if !hostname.is_a?(String) || hostname.empty?
+      return {
+        ok: false,
+        status: 500,
+        body: { error: "invalid_credentials", message: "hostname is required in credentials.json" }.to_json
+      }
+    end
+
+    { ok: true, data: data }
   end
 
   # ========= search_code 取得 =========
@@ -135,34 +176,40 @@ helpers do
 
   # ========= アクセストークン取得 =========
 
-  def getAccessTokenOrFetch
-    cached = loadCachedToken
+  def getAccessTokenOrFetch(credentials)
+    hostname = credentials["hostname"]
+
+    cached = loadCachedToken(hostname)
     return { ok: true, token: cached } if cached
 
-    fetched = fetchNewToken
+    fetched = fetchNewToken(credentials)
     return fetched unless fetched[:ok]
-
-    ensureRuntimeDir
-    File.write(TOKEN_FILE, fetched[:body])
 
     begin
       payload = JSON.parse(fetched[:body])
       token = payload.fetch("token")
-      { ok: true, token: token }
     rescue StandardError => e
-      {
+      return {
         ok: false,
         status: 500,
         body: { error: "invalid_token_response", message: e.message }.to_json
       }
     end
+
+    ensureRuntimeDir
+    # 応答に hostname を併記して保存（hostname 切替時の自動無効化用）
+    File.write(TOKEN_FILE, payload.merge("hostname" => hostname).to_json)
+
+    { ok: true, token: token }
   end
 
-  def loadCachedToken
+  def loadCachedToken(hostname)
     return nil unless File.exist?(TOKEN_FILE)
 
     begin
       payload = JSON.parse(File.read(TOKEN_FILE))
+      return nil unless payload["hostname"] == hostname
+
       expires_in = Integer(payload.fetch("expires_in"))
       token = payload.fetch("token")
       return token if Time.now.to_i < File.mtime(TOKEN_FILE).to_i + expires_in
@@ -173,20 +220,19 @@ helpers do
     nil
   end
 
-  def fetchNewToken
-    unless File.exist?(CREDENTIALS_FILE)
-      return {
-        ok: false,
-        status: 500,
-        body: { error: "credentials.json not found" }.to_json
-      }
-    end
+  def fetchNewToken(credentials)
+    hostname = credentials["hostname"]
+    payload = {
+      grant_type: credentials["grant_type"] || "client_credentials",
+      client_id: credentials["client_id"] || "",
+      secret_key: credentials["secret_key"] || ""
+    }
 
-    uri = URI.parse("https://api.da.pf.japanpost.jp/api/v1/j/token")
+    uri = URI.parse("https://#{hostname}/api/v2/j/token")
     request = Net::HTTP::Post.new(uri)
     request["Content-Type"] = "application/json"
     request["x-forwarded-for"] = "127.0.0.1"
-    request.body = File.read(CREDENTIALS_FILE)
+    request.body = payload.to_json
 
     response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
       http.request(request)
@@ -201,17 +247,17 @@ helpers do
 
   # ========= Japan Post API プロキシ =========
 
-  def proxyJapanPostApi(token, search_code)
+  def proxyJapanPostApi(token, hostname, search_code)
     response =
       if isZipOrCode(search_code)
-        uri = URI.parse("https://api.da.pf.japanpost.jp/api/v1/searchcode/#{URI.encode_www_form_component(search_code)}")
+        uri = URI.parse("https://#{hostname}/api/v2/searchcode/#{URI.encode_www_form_component(search_code)}")
         request = Net::HTTP::Get.new(uri)
         request["Authorization"] = "Bearer #{token}"
         Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
           http.request(request)
         end
       else
-        uri = URI.parse("https://api.da.pf.japanpost.jp/api/v1/addresszip")
+        uri = URI.parse("https://#{hostname}/api/v2/addresszip")
         request = Net::HTTP::Post.new(uri)
         request["Authorization"] = "Bearer #{token}"
         request["Content-Type"] = "application/json"

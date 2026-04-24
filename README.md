@@ -5,7 +5,7 @@ Japan Post Digital Address API（郵便番号・デジタルアドレス for Biz
 
 1. ゆうIDを取得し、郵便番号・デジタルアドレス for Biz にログインする。
 2. 開発したいシステムをダッシュボードの「システムリスト」に登録する。このリポジトリをローカルで動かす場合は `127.0.0.1` を接続元 IP として登録しておく。
-3. API用のクライアント資格情報（`client_id` と `secret_key`）を取得する。
+3. API用のクライアント資格情報（`client_id`、`secret_key`、`hostname`）を取得する。テスト環境ではゆうIDごとに専用の `hostname` が発行されます。
 
 PHP / Node.js / Ruby / Python の 4 つの実装を同梱し、いずれも次のような役割を担います。
 
@@ -43,7 +43,7 @@ jp-digital-address-proxy/
 ## 主なファイル
 
 - `shared/frontend/index.html` – 郵便番号から住所を取得するフォーム。`/api?search_code=XXXXXXX` に fetch し、取得結果をフォームに反映する。
-- `php/index.php` – PHP 版のプロキシ。cURL でトークン取得 (`/api/v1/j/token`) と住所検索 (`/api/v1/searchcode` or `/api/v1/addresszip`) を呼び出す。
+- `php/index.php` – PHP 版のプロキシ。cURL でトークン取得 (`/api/v2/j/token`) と住所検索 (`/api/v2/searchcode` or `/api/v2/addresszip`) を呼び出す。
 - `node/index.js` – Node.js 版のプロキシ。Express を使用して PHP 版と同等の挙動を提供する。
 - `ruby/index.rb` – Ruby (Sinatra) 版のプロキシ。Rack/Sinatra 上で PHP/Node と揃えたルーティングを提供する。
 - `python/index.py` – Python (Flask) 版のプロキシ。requests を用いて API コールとトークンキャッシュを行う。
@@ -72,9 +72,15 @@ jp-digital-address-proxy/
 {
   "grant_type": "client_credentials",
   "client_id": "your-client_id",
-  "secret_key": "your-secret_key"
+  "secret_key": "your-secret_key",
+  "hostname": "api.da.pf.japanpost.jp"
 }
 ```
+
+- `hostname` は必須項目で、すべてのプロキシ実装は `https://{hostname}/api/v2/...` に対してリクエストします。
+- テスト環境ではゆうIDごとに専用ホスト（例: `stg-xxxxx.api.da.pf.japanpost.jp`）が発行されるため、発行されたものを設定してください。
+- 本番環境では `api.da.pf.japanpost.jp` を設定します。値の切り替えだけでテスト/本番を共通運用できます。
+- `hostname` が未設定の場合、プロキシは 500 エラー（`invalid_credentials`）を返します。
 
 ### 2. IP アドレス登録
 
@@ -205,9 +211,10 @@ docker compose up --force-recreate php
 ## API 挙動
 
 1. `/api` に `search_code` をクエリで指定して GET を送信します。
-2. サーバーは `access_token.json` を参照し、有効期限内のトークンがあれば再利用します。無い場合は `credentials.json` を使って `POST /api/v1/j/token` を呼び出し、新しいトークンを保存します。
-3. `search_code` が数字 3〜7 桁または英数字 7 文字の場合は `GET /api/v1/searchcode/{code}` に転送します。それ以外は `POST /api/v1/addresszip` に `{"freeword": search_code}` を送ります。
-4. Japan Post API から返った JSON をそのままレスポンスとして返却します。
+2. サーバーは `credentials.json` から `hostname` を読み込み、`https://{hostname}` を API のベース URL として使用します。
+3. `access_token.json` を参照し、有効期限内のトークンがあれば再利用します。無い場合は `client_id` / `secret_key` を使って `POST /api/v2/j/token` を呼び出し、新しいトークンを保存します。
+4. `search_code` が数字 3〜7 桁または英数字 7 文字の場合は `GET /api/v2/searchcode/{code}` に転送します。それ以外は `POST /api/v2/addresszip` に `{"freeword": search_code}` を送ります。
+5. Japan Post API から返った JSON をそのままレスポンスとして返却します。
 
 ## フロントエンド (`index.html`)
 
@@ -243,9 +250,10 @@ docker compose up --force-recreate <service>
 
 ### アクセストークン取得エラー
 
-- `credentials.json` のパスと内容が正しいか確認してください。
+- `credentials.json` のパスと内容が正しいか確認してください。`hostname` が未設定だと 500 エラー (`invalid_credentials`) が返ります。
+- テスト環境と本番環境で `hostname` の値が異なります。ゆうIDに発行された値を使ってください。`hostname` を切り替えた場合、各実装が旧ホスト向けキャッシュを自動的に無効化して再取得します（`shared/runtime/access_token.json` を手動削除する必要はありません）。
 - Japan Post 側で登録した IP アドレス（`127.0.0.1` や実行環境の IP）が許可されているか確認してください。
-- `shared/runtime/access_token.json` を削除して再取得を試してください。
+- それでも解消しない場合は `shared/runtime/access_token.json` を削除して再取得を試してください。
 
 ## 運用上の注意
 

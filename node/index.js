@@ -85,7 +85,18 @@ async function handleApiRequest(req, res) {
   const searchCode = getSearchCode(req);
 
   try {
-    const tokenResult = await getAccessTokenOrFetch();
+    const credsResult = loadCredentials();
+    if (!credsResult.ok) {
+      res
+        .status(credsResult.status)
+        .type("application/json")
+        .send(credsResult.body);
+      return;
+    }
+    const credentials = credsResult.data;
+    const hostname = credentials.hostname;
+
+    const tokenResult = await getAccessTokenOrFetch(credentials);
     if (!tokenResult.ok) {
       res
         .status(tokenResult.status)
@@ -94,10 +105,47 @@ async function handleApiRequest(req, res) {
       return;
     }
 
-    await proxyJapanPostApi(res, tokenResult.token, searchCode);
+    await proxyJapanPostApi(res, tokenResult.token, hostname, searchCode);
   } catch (error) {
     res.status(500).json({ error: "internal_error", message: String(error) });
   }
+}
+
+function loadCredentials() {
+  if (!fs.existsSync(CREDENTIALS_FILE)) {
+    return {
+      ok: false,
+      status: 500,
+      body: JSON.stringify({ error: "credentials.json not found" })
+    };
+  }
+
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, "utf8"));
+  } catch (error) {
+    return {
+      ok: false,
+      status: 500,
+      body: JSON.stringify({
+        error: "invalid_credentials",
+        message: "credentials.json is not valid JSON"
+      })
+    };
+  }
+
+  if (typeof data.hostname !== "string" || data.hostname === "") {
+    return {
+      ok: false,
+      status: 500,
+      body: JSON.stringify({
+        error: "invalid_credentials",
+        message: "hostname is required in credentials.json"
+      })
+    };
+  }
+
+  return { ok: true, data };
 }
 
 function getSearchCode(req) {
@@ -109,23 +157,22 @@ function getSearchCode(req) {
   return remainder.length > 0 ? decodeURIComponent(remainder.replace(/^\/?/, "")) : "";
 }
 
-async function getAccessTokenOrFetch() {
-  const cached = loadCachedToken();
+async function getAccessTokenOrFetch(credentials) {
+  const hostname = credentials.hostname;
+
+  const cached = loadCachedToken(hostname);
   if (cached !== null) {
     return { ok: true, token: cached };
   }
 
-  const fetched = await fetchNewToken();
+  const fetched = await fetchNewToken(credentials);
   if (!fetched.ok) {
     return fetched;
   }
 
-  ensureRuntimeDir();
-  fs.writeFileSync(TOKEN_FILE, fetched.body, "utf8");
-
+  let parsed;
   try {
-    const token = JSON.parse(fetched.body).token;
-    return { ok: true, token };
+    parsed = JSON.parse(fetched.body);
   } catch (error) {
     return {
       ok: false,
@@ -133,9 +180,22 @@ async function getAccessTokenOrFetch() {
       body: JSON.stringify({ error: "invalid_token_response", message: String(error) })
     };
   }
+  if (typeof parsed.token !== "string") {
+    return {
+      ok: false,
+      status: 500,
+      body: JSON.stringify({ error: "invalid_token_response", message: "token missing" })
+    };
+  }
+
+  ensureRuntimeDir();
+  const toStore = { ...parsed, hostname };
+  fs.writeFileSync(TOKEN_FILE, JSON.stringify(toStore), "utf8");
+
+  return { ok: true, token: parsed.token };
 }
 
-function loadCachedToken() {
+function loadCachedToken(hostname) {
   if (!fs.existsSync(TOKEN_FILE)) {
     return null;
   }
@@ -147,6 +207,9 @@ function loadCachedToken() {
       typeof data.expires_in !== "number" ||
       !Number.isFinite(data.expires_in)
     ) {
+      return null;
+    }
+    if (data.hostname !== hostname) {
       return null;
     }
 
@@ -162,23 +225,20 @@ function loadCachedToken() {
   return null;
 }
 
-async function fetchNewToken() {
-  if (!fs.existsSync(CREDENTIALS_FILE)) {
-    return {
-      ok: false,
-      status: 500,
-      body: JSON.stringify({ error: "credentials.json not found" })
-    };
-  }
+async function fetchNewToken(credentials) {
+  const payload = {
+    grant_type: credentials.grant_type ?? "client_credentials",
+    client_id: credentials.client_id ?? "",
+    secret_key: credentials.secret_key ?? ""
+  };
 
-  const credentials = fs.readFileSync(CREDENTIALS_FILE, "utf8");
-  const response = await fetch("https://api.da.pf.japanpost.jp/api/v1/j/token", {
+  const response = await fetch(`https://${credentials.hostname}/api/v2/j/token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-forwarded-for": "127.0.0.1"
     },
-    body: credentials
+    body: JSON.stringify(payload)
   });
 
   const body = await response.text();
@@ -189,10 +249,10 @@ async function fetchNewToken() {
   return { ok: true, status: response.status, body };
 }
 
-async function proxyJapanPostApi(res, token, searchCode) {
+async function proxyJapanPostApi(res, token, hostname, searchCode) {
   if (isZipOrCode(searchCode)) {
     const apiResp = await fetch(
-      `https://api.da.pf.japanpost.jp/api/v1/searchcode/${encodeURIComponent(searchCode)}`,
+      `https://${hostname}/api/v2/searchcode/${encodeURIComponent(searchCode)}`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
     const body = await apiResp.text();
@@ -200,7 +260,7 @@ async function proxyJapanPostApi(res, token, searchCode) {
     return;
   }
 
-  const apiResp = await fetch("https://api.da.pf.japanpost.jp/api/v1/addresszip", {
+  const apiResp = await fetch(`https://${hostname}/api/v2/addresszip`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
