@@ -112,7 +112,17 @@ def serveIndexHtml() -> Response:
 def handleApiRequest(fallback: str) -> Response:
     search_code = getSearchCode(fallback)
 
-    token_result = getAccessTokenOrFetch()
+    creds_result = loadCredentials()
+    if not creds_result["ok"]:
+        return Response(
+            creds_result["body"],
+            status=creds_result["status"],
+            mimetype="application/json",
+        )
+    credentials = creds_result["data"]
+    hostname = credentials["hostname"]
+
+    token_result = getAccessTokenOrFetch(credentials)
     if not token_result["ok"]:
         return Response(
             token_result["body"],
@@ -120,7 +130,41 @@ def handleApiRequest(fallback: str) -> Response:
             mimetype="application/json",
         )
 
-    return proxyJapanPostApi(token_result["token"], search_code)
+    return proxyJapanPostApi(token_result["token"], hostname, search_code)
+
+
+def loadCredentials() -> Dict[str, object]:
+    if not CREDENTIALS_FILE.exists():
+        return {
+            "ok": False,
+            "status": 500,
+            "body": json.dumps({"error": "credentials.json not found"}),
+        }
+
+    try:
+        data = json.loads(CREDENTIALS_FILE.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {
+            "ok": False,
+            "status": 500,
+            "body": json.dumps(
+                {"error": "invalid_credentials", "message": "credentials.json is not valid JSON"},
+                ensure_ascii=False,
+            ),
+        }
+
+    hostname = data.get("hostname")
+    if not isinstance(hostname, str) or not hostname:
+        return {
+            "ok": False,
+            "status": 500,
+            "body": json.dumps(
+                {"error": "invalid_credentials", "message": "hostname is required in credentials.json"},
+                ensure_ascii=False,
+            ),
+        }
+
+    return {"ok": True, "data": data}
 
 
 def getSearchCode(fallback: str) -> str:
@@ -129,22 +173,20 @@ def getSearchCode(fallback: str) -> str:
     return unquote(fallback) if fallback else ""
 
 
-def getAccessTokenOrFetch() -> Dict[str, object]:
-    cached = loadCachedToken()
+def getAccessTokenOrFetch(credentials: Dict[str, object]) -> Dict[str, object]:
+    hostname = str(credentials["hostname"])
+
+    cached = loadCachedToken(hostname)
     if cached:
         return {"ok": True, "token": cached}
 
-    fetched = fetchNewToken()
+    fetched = fetchNewToken(credentials)
     if not fetched["ok"]:
         return fetched
-
-    ensureRuntimeDir()
-    TOKEN_FILE.write_text(fetched["body"], encoding="utf-8")
 
     try:
         data = json.loads(fetched["body"])
         token = data["token"]
-        return {"ok": True, "token": token}
     except Exception as exc:  # noqa: BLE001
         return {
             "ok": False,
@@ -155,13 +197,25 @@ def getAccessTokenOrFetch() -> Dict[str, object]:
             ),
         }
 
+    ensureRuntimeDir()
+    # 応答に hostname を併記して保存（hostname 切替時の自動無効化用）
+    TOKEN_FILE.write_text(
+        json.dumps({**data, "hostname": hostname}, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
-def loadCachedToken() -> Optional[str]:
+    return {"ok": True, "token": token}
+
+
+def loadCachedToken(hostname: str) -> Optional[str]:
     if not TOKEN_FILE.exists():
         return None
 
     try:
         data = json.loads(TOKEN_FILE.read_text(encoding="utf-8"))
+        if data.get("hostname") != hostname:
+            return None
+
         expires_in = int(data["expires_in"])
         token = str(data["token"])
 
@@ -174,23 +228,21 @@ def loadCachedToken() -> Optional[str]:
     return None
 
 
-def fetchNewToken() -> Dict[str, object]:
-    if not CREDENTIALS_FILE.exists():
-        return {
-            "ok": False,
-            "status": 500,
-            "body": json.dumps({"error": "credentials.json not found"}),
-        }
-
-    credentials = CREDENTIALS_FILE.read_text(encoding="utf-8")
+def fetchNewToken(credentials: Dict[str, object]) -> Dict[str, object]:
+    hostname = credentials["hostname"]
+    payload = {
+        "grant_type": credentials.get("grant_type", "client_credentials"),
+        "client_id": credentials.get("client_id", ""),
+        "secret_key": credentials.get("secret_key", ""),
+    }
 
     response = requests.post(
-        "https://api.da.pf.japanpost.jp/api/v1/j/token",
+        f"https://{hostname}/api/v2/j/token",
         headers={
             "Content-Type": "application/json",
             "x-forwarded-for": "127.0.0.1",
         },
-        data=credentials,
+        json=payload,
         timeout=30,
     )
 
@@ -201,16 +253,16 @@ def fetchNewToken() -> Dict[str, object]:
     }
 
 
-def proxyJapanPostApi(token: str, search_code: str) -> Response:
+def proxyJapanPostApi(token: str, hostname: str, search_code: str) -> Response:
     if isZipOrCode(search_code):
         response = requests.get(
-            f"https://api.da.pf.japanpost.jp/api/v1/searchcode/{requests.utils.quote(search_code)}",
+            f"https://{hostname}/api/v2/searchcode/{requests.utils.quote(search_code)}",
             headers={"Authorization": f"Bearer {token}"},
             timeout=30,
         )
     else:
         response = requests.post(
-            "https://api.da.pf.japanpost.jp/api/v1/addresszip",
+            f"https://{hostname}/api/v2/addresszip",
             headers={
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",

@@ -87,8 +87,21 @@ function handleApiRequest(): void {
     // search_code の取得（元処理を踏襲）
     $search_code = getSearchCode();
 
+    // 資格情報（hostname 含む）を読み込み
+    $creds_result = loadCredentials();
+    if (!($creds_result['ok'] ?? false)) {
+        $status = (int) ($creds_result['status'] ?? 500);
+        http_response_code($status);
+        header('Content-Type: application/json');
+        echo $creds_result['body'] ?? '';
+        logRequest($status);
+        return;
+    }
+    $credentials = $creds_result['data'];
+    $hostname = $credentials['hostname'];
+
     // Token確保（キャッシュ→なければ取得）
-    $token_result = getAccessTokenOrFetch();
+    $token_result = getAccessTokenOrFetch($credentials);
     if (!($token_result['ok'] ?? false)) {
         $status = (int) ($token_result['status'] ?? 500);
         http_response_code($status);
@@ -99,7 +112,40 @@ function handleApiRequest(): void {
     }
 
     // Japan Post APIへプロキシして、そのまま返却
-    proxyJapanPostApi($token_result['token'], $search_code);
+    proxyJapanPostApi($token_result['token'], $hostname, $search_code);
+}
+
+
+/* ========= 資格情報ファイル読み込み ========= */
+function loadCredentials(): array {
+    if (!file_exists(CREDENTIALS_FILE)) {
+        return [
+            'ok'     => false,
+            'status' => 500,
+            'body'   => json_encode(['error' => 'credentials.json not found'], JSON_UNESCAPED_UNICODE),
+        ];
+    }
+
+    $raw = file_get_contents(CREDENTIALS_FILE);
+    $data = json_decode($raw, true);
+    if (!is_array($data)) {
+        return [
+            'ok'     => false,
+            'status' => 500,
+            'body'   => json_encode(['error' => 'invalid_credentials', 'message' => 'credentials.json is not valid JSON'], JSON_UNESCAPED_UNICODE),
+        ];
+    }
+
+    $hostname = $data['hostname'] ?? '';
+    if (!is_string($hostname) || $hostname === '') {
+        return [
+            'ok'     => false,
+            'status' => 500,
+            'body'   => json_encode(['error' => 'invalid_credentials', 'message' => 'hostname is required in credentials.json'], JSON_UNESCAPED_UNICODE),
+        ];
+    }
+
+    return ['ok' => true, 'data' => $data];
 }
 
 
@@ -122,9 +168,11 @@ function getSearchCode(): string {
 
 
 /* ========= アクセストークン取得 ========= */
-function getAccessTokenOrFetch(): array {
-    // キャッシュがあれば利用
-    $cached = loadCachedToken(TOKEN_FILE);
+function getAccessTokenOrFetch(array $credentials): array {
+    $hostname = $credentials['hostname'];
+
+    // キャッシュがあれば利用（ただし hostname が一致しているもののみ）
+    $cached = loadCachedToken(TOKEN_FILE, $hostname);
     if ($cached !== null) {
         return [
             'ok'    => true,
@@ -133,18 +181,13 @@ function getAccessTokenOrFetch(): array {
     }
 
     // 無ければ取得
-    $result = fetchNewToken();
+    $result = fetchNewToken($credentials);
     if ($result['ok'] === false) {
         return $result;
     }
 
-    // runtime ディレクトリが無い場合は作成
-    ensureRuntimeDir();
-
-    // 保存して返す
-    file_put_contents(TOKEN_FILE, $result['body']);
-    $obj = json_decode($result['body']);
-    if (!$obj || !isset($obj->token)) {
+    $parsed = json_decode($result['body'], true);
+    if (!is_array($parsed) || !isset($parsed['token'])) {
         return [
             'ok'     => false,
             'status' => 500,
@@ -155,15 +198,22 @@ function getAccessTokenOrFetch(): array {
         ];
     }
 
+    // runtime ディレクトリが無い場合は作成
+    ensureRuntimeDir();
+
+    // 応答に hostname を併記して保存（hostname 切替時の自動無効化用）
+    $parsed['hostname'] = $hostname;
+    file_put_contents(TOKEN_FILE, json_encode($parsed, JSON_UNESCAPED_UNICODE));
+
     return [
         'ok'    => true,
-        'token' => (string)$obj->token,
+        'token' => (string)$parsed['token'],
     ];
 }
 
 
 /* ========= トークンキャッシュ読み込み ========= */
-function loadCachedToken(string $token_filename): ?string {
+function loadCachedToken(string $token_filename, string $hostname): ?string {
     if (!file_exists($token_filename)) {
         return null;
     }
@@ -178,6 +228,11 @@ function loadCachedToken(string $token_filename): ?string {
         return null;
     }
 
+    // hostname を切り替えた場合、キャッシュは別ホスト向けなので無効
+    if (!isset($obj->hostname) || (string)$obj->hostname !== $hostname) {
+        return null;
+    }
+
     // PHP元処理： time() < filemtime + expires_in
     $expiresAt = filemtime($token_filename) + (int)$obj->expires_in;
     if (time() < $expiresAt) {
@@ -189,22 +244,21 @@ function loadCachedToken(string $token_filename): ?string {
 
 
 /* ========= 新規トークン取得 ========= */
-function fetchNewToken(): array {
-    if (!file_exists(CREDENTIALS_FILE)) {
-        return [
-            'ok'     => false,
-            'status' => 500,
-            'body'   => json_encode(['error' => 'credentials.json not found'], JSON_UNESCAPED_UNICODE),
-        ];
-    }
+function fetchNewToken(array $credentials): array {
+    $hostname = $credentials['hostname'];
+    $payload = [
+        'grant_type' => $credentials['grant_type'] ?? 'client_credentials',
+        'client_id'  => $credentials['client_id'] ?? '',
+        'secret_key' => $credentials['secret_key'] ?? '',
+    ];
 
-    $ch = curl_init('https://api.da.pf.japanpost.jp/api/v1/j/token');
+    $ch = curl_init("https://{$hostname}/api/v2/j/token");
     curl_setopt($ch, CURLOPT_USERAGENT, 'curl/' . curl_version()['version']);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'Content-Type: application/json',
         'x-forwarded-for: 127.0.0.1',
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents(CREDENTIALS_FILE));
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_UNESCAPED_UNICODE));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
     $body = curl_exec($ch);
@@ -220,12 +274,12 @@ function fetchNewToken(): array {
 
 
 /* ========= JapanPost APIへプロキシ ========= */
-function proxyJapanPostApi(string $token, string $search_code): void {
+function proxyJapanPostApi(string $token, string $hostname, string $search_code): void {
     header('Content-Type: application/json');
 
     if (isZipOrCode($search_code)) {
         // GET /searchcode/{search_code}
-        $url = "https://api.da.pf.japanpost.jp/api/v1/searchcode/" . rawurlencode($search_code);
+        $url = "https://{$hostname}/api/v2/searchcode/" . rawurlencode($search_code);
 
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_USERAGENT, 'curl/' . curl_version()['version']);
@@ -244,7 +298,7 @@ function proxyJapanPostApi(string $token, string $search_code): void {
     }
 
     // POST /addresszip
-    $ch = curl_init('https://api.da.pf.japanpost.jp/api/v1/addresszip');
+    $ch = curl_init("https://{$hostname}/api/v2/addresszip");
     curl_setopt($ch, CURLOPT_USERAGENT, 'curl/' . curl_version()['version']);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         "Authorization: Bearer $token",
